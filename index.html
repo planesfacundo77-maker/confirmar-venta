@@ -150,14 +150,48 @@
   <div id="mensaje"></div>
 
   <script>
-    const PIXEL_ID     = '1092636143779431';
-    const ACCESS_TOKEN = 'TOKEN_DE_META_OMITIDO';
+    const servidor = 'https://confirmar-venta-jlemos.monedasdelemos50.chatgpt.site';
+    let intentoPendiente;
 
-    function getCookie(name) {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop().split(';').shift();
-      return null;
+    function conectarFormulario(ventana, datos) {
+      return new Promise((resolve, reject) => {
+        function limpiar() {
+          window.removeEventListener('message', recibir);
+          clearInterval(cierre);
+          clearTimeout(plazo);
+        }
+
+        function recibir(evento) {
+          if (evento.origin !== servidor || evento.source !== ventana) return;
+          if (evento.data?.type === 'confirmar-venta:ready') {
+            datos.then(venta => ventana.postMessage({
+              type: 'confirmar-venta:submit', datos: venta
+            }, servidor)).catch(error => {
+              limpiar();
+              ventana.close();
+              reject(error);
+            });
+          } else if (evento.data?.type === 'confirmar-venta:result') {
+            datos.then(venta => {
+              if (evento.data.id !== venta.id) return;
+              limpiar();
+              ventana.close();
+              resolve(evento.data.result);
+            }).catch(reject);
+          }
+        }
+
+        window.addEventListener('message', recibir);
+        const cierre = setInterval(() => {
+          if (!ventana.closed) return;
+          limpiar();
+          reject(new Error('Volvé a tocar Confirmar Venta si acabás de iniciar sesión.'));
+        }, 500);
+        const plazo = setTimeout(() => {
+          limpiar();
+          reject(new Error('Si ya iniciaste sesión, volvé a tocar Confirmar Venta.'));
+        }, 90000);
+      });
     }
 
     async function hashData(data) {
@@ -189,9 +223,6 @@
       const monto = document.getElementById('monto').value;
       const telefono = document.getElementById('telefono').value.trim();
       const refCode = document.getElementById('ref').value.trim();
-      const nombre = document.getElementById('nombre').value.trim();
-      const apellido = document.getElementById('apellido').value.trim();
-      const genero = document.getElementById('genero').value;
       const testCode = document.getElementById('testEventCode').value.trim();
       const divMsg = document.getElementById('mensaje');
       const btn = document.getElementById('btnConfirmar');
@@ -205,51 +236,41 @@
       btn.disabled = true;
       divMsg.innerHTML = '⏳ Enviando venta...';
 
-      const telefonoLimpio = telefono.replace(/\D/g, '');
-      const user_data = {
-        client_user_agent: navigator.userAgent,
-        fbp: getCookie('_fbp') || sessionStorage.getItem('casino_fbp') || '',
-        fbc: getCookie('_fbc') || sessionStorage.getItem('casino_fbc') || '',
-        country: ['ar']
-      };
-
-      if (refCode) user_data.external_id = [await hashData(refCode)];
-      if (telefonoLimpio) user_data.ph = [await hashData(telefonoLimpio)];
-      if (nombre) user_data.fn = [await hashData(nombre)];
-      if (apellido) user_data.ln = [await hashData(apellido)];
-      if (genero) user_data.ge = [await hashData(genero)];
-
-      const eventData = {
-        event_name: 'Purchase',
-        event_time: Math.floor(Date.now() / 1000),
-        event_id: 'purchase_' + Date.now(),
-        action_source: 'website',
-        event_source_url: 'https://planesfacundo77-maker.github.io/landing-bono/',
-        custom_data: { value: parseFloat(monto), currency: 'ARS' },
-        user_data: user_data
-      };
-
-      if (testCode) eventData.test_event_code = testCode;
+      const ventana = window.open(servidor + '/conectar', 'confirmarVenta');
+      if (!ventana) {
+        divMsg.textContent = '⚠️ Permití las ventanas emergentes para confirmar la venta.';
+        btn.disabled = false;
+        return;
+      }
 
       try {
-        const response = await fetch(`https://graph.facebook.com/v19.0/${PIXEL_ID}/events`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: [eventData], access_token: ACCESS_TOKEN })
-        });
-        const data = await response.json();
+        const datos = (async () => {
+          const telefonoLimpio = telefono.replace(/\D/g, '');
+          const userData = { ph: await hashData(telefonoLimpio) };
+          if (refCode) userData.external_id = await hashData(refCode);
+
+          const venta = { monto: Number(monto), userData, testCode };
+          const clave = JSON.stringify(venta);
+          if (intentoPendiente?.clave !== clave) {
+            intentoPendiente = { clave, id: crypto.randomUUID() };
+          }
+          return { ...venta, id: intentoPendiente.id };
+        })();
+        const data = await conectarFormulario(ventana, datos);
         if (data.events_received) {
+          intentoPendiente = undefined;
           divMsg.innerHTML = '✅ ¡Venta registrada con éxito!';
           divMsg.style.color = '#00e676';
           ['monto','telefono','ref','nombre','apellido'].forEach(id => document.getElementById(id).value = '');
           document.getElementById('genero').value = '';
           actualizarScore();
         } else {
-          divMsg.innerHTML = '❌ Error: ' + (data.error?.message ?? 'Fallo en envío');
+          divMsg.textContent = '❌ Error: ' + (data.error?.message ?? 'Fallo en envío');
           divMsg.style.color = '#ff5252';
         }
       } catch (e) {
-        divMsg.innerHTML = '❌ Error de red';
+        divMsg.textContent = '❌ ' + e.message;
+        divMsg.style.color = '#ff5252';
       } finally {
         btn.disabled = false;
       }
