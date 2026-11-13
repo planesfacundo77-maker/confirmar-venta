@@ -100,9 +100,6 @@
 
   <h2>🎰 Confirmar Venta</h2>
 
-  <label for="metaToken">Token de acceso de Meta</label>
-  <input type="password" id="metaToken" placeholder="Pegá el token de este píxel" autocomplete="off" spellcheck="false">
-
   <!-- Opcional: solo para depuración -->
   <div class="test-box">
     <label style="color: #ffd27f;">🧪 Test Event Code <span class="opcional">opcional</span></label>
@@ -141,7 +138,7 @@
     </div>
   </div>
 
-  <label>⚧️ Género</label>
+  <label>⚧ Género</label>
   <select id="genero" onchange="actualizarScore()">
     <option value="">— No especificar —</option>
     <option value="m">👨 Masculino</option>
@@ -154,6 +151,7 @@
 
   <script>
     const PIXEL_ID     = '1092636143779431';
+    const ACCESS_TOKEN = 'EAAWtagICxUEBS2MAU3QfN8iLZClxZCGMF67HQTbGdvGnjDu8HYDYmk4UATfITB875QzpSUP7GGZCxkfFIWcRUSuhSbgC9k8x02KEEMcIQZCVCxt1sdVBq6dfjwhx3WkoMuRo5KCmI4spA8fD8Fuz9AuyiT65MWdpWqlABCvuTgPqDntQRYB1E3pl1AWhxLIDoQZDZD';
 
     function getCookie(name) {
       const value = `; ${document.cookie}`;
@@ -188,7 +186,6 @@
     }
 
     async function confirmarVenta() {
-      const accessToken = document.getElementById('metaToken').value.trim();
       const monto = document.getElementById('monto').value;
       const telefono = document.getElementById('telefono').value.trim();
       const refCode = document.getElementById('ref').value.trim();
@@ -198,13 +195,6 @@
       const testCode = document.getElementById('testEventCode').value.trim();
       const divMsg = document.getElementById('mensaje');
       const btn = document.getElementById('btnConfirmar');
-
-      if (!accessToken) {
-        divMsg.textContent = '⚠️ Ingresá el token de Meta.';
-        divMsg.style.color = '#ffcc00';
-        document.getElementById('metaToken').focus();
-        return;
-      }
 
       if (!monto || !telefono) {
         divMsg.innerHTML = '⚠️ Monto y Teléfono son obligatorios';
@@ -239,14 +229,13 @@
         user_data: user_data
       };
 
-      const payload = { data: [eventData], access_token: accessToken };
-      if (testCode) payload.test_event_code = testCode;
+      if (testCode) eventData.test_event_code = testCode;
 
       try {
-        const response = await fetch(`https://graph.facebook.com/v27.0/${PIXEL_ID}/events`, {
+        const response = await fetch(`https://graph.facebook.com/v19.0/${PIXEL_ID}/events`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ data: [eventData], access_token: ACCESS_TOKEN })
         });
         const data = await response.json();
         if (data.events_received) {
@@ -256,7 +245,7 @@
           document.getElementById('genero').value = '';
           actualizarScore();
         } else {
-          divMsg.textContent = '❌ Error: ' + (data.error?.message ?? 'Fallo en envío');
+          divMsg.innerHTML = '❌ Error: ' + (data.error?.message ?? 'Fallo en envío');
           divMsg.style.color = '#ff5252';
         }
       } catch (e) {
